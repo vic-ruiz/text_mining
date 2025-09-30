@@ -1,0 +1,10 @@
+fastapi
+uvicorn[standard]
+requests
+pydantic
+python-dotenv
+huggingface_hub
+streamlit
+transformers
+sentence-transformers
+chromadb

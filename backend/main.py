@@ -2,6 +2,7 @@ from fastapi import FastAPI, Request, HTTPException
 from pydantic import BaseModel
 from huggingface_hub import InferenceClient
 from datetime import datetime, timedelta
+import requests
 
 app = FastAPI()
 
@@ -46,8 +47,7 @@ def get_slots(days: int = 7):
     r = requests.get("https://api.cal.com/v2/slots", headers=_cal_headers(), params=params, timeout=30)
     if r.status_code >= 300:
         raise HTTPException(r.status_code, r.text)
-    return r.json()  # devuelve slots por fecha/hora
-# Doc: /v2/slots admite eventTypeId o (username+eventTypeSlug) + start/end/timeZone. :contentReference[oaicite:2]{index=2}
+    return r.json()
 
 class BookIn(BaseModel):
     start: str  # ISO 8601 (ej. "2025-10-02T18:00:00")
@@ -59,7 +59,6 @@ class BookIn(BaseModel):
 @app.post("/book")
 def book_slot(b: BookIn):
     payload = {
-        "eventTypeId": int(CAL_EVENT_TYPE_ID) if CAL_EVENT_TYPE_ID else None,
         "start": b.start,
         "end": b.end,
         "timeZone": CAL_TZ,
@@ -67,8 +66,11 @@ def book_slot(b: BookIn):
         "attendees": [{"email": b.email, "name": b.name or b.email}],
         "metadata": {"source": "streamlit"}
     }
-    # Si usás slug+username en lugar de ID, podés enviar "eventTypeSlug" y "username"
-    if not CAL_EVENT_TYPE_ID:
+    
+    # Manejo correcto de eventTypeId vs slug+username
+    if CAL_EVENT_TYPE_ID:
+        payload["eventTypeId"] = int(CAL_EVENT_TYPE_ID)
+    else:
         payload["eventTypeSlug"] = CAL_EVENT_TYPE_SLUG
         payload["username"] = CAL_USERNAME
 
@@ -76,7 +78,6 @@ def book_slot(b: BookIn):
     if r.status_code >= 300:
         raise HTTPException(r.status_code, r.text)
     return r.json()
-# Doc: crear reserva con POST /v2/bookings. :contentReference[oaicite:3]{index=3}
 
 # ------------ PAGOS (Mercado Pago Checkout Pro) ------------
 class PayIn(BaseModel):
@@ -112,7 +113,6 @@ def pay_create(p: PayIn):
         raise HTTPException(r.status_code, r.text)
     data = r.json()
     return {"ok": True, "preference_id": data["id"], "checkout_url": data.get("init_point")}
-# Doc: crear preferencia para Checkout Pro. :contentReference[oaicite:4]{index=4}
 
 @app.post("/pay/webhook")
 async def pay_webhook(request: Request):
